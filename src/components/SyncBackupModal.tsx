@@ -1,9 +1,17 @@
 import React, { useRef, useState } from 'react';
-import { X, Download, Upload, Cloud, HardDrive, Check, AlertCircle, LogIn, LogOut, ShieldCheck, Sparkles } from 'lucide-react';
+import { X, Download, Upload, Cloud, HardDrive, Check, AlertCircle, LogIn, LogOut, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { User } from 'firebase/auth';
 import { loginWithGoogle, logoutUser } from '../firebase';
 import { exportDataAsJSON, importDataFromJSON } from '../utils/storage';
+
+interface AuthErrorState {
+  message: string;
+  code?: string;
+  isPopupBlocked?: boolean;
+  isInIframe?: boolean;
+  isUnauthorizedDomain?: boolean;
+}
 
 interface SyncBackupModalProps {
   isOpen: boolean;
@@ -24,8 +32,9 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<AuthErrorState | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   if (!isOpen) return null;
 
@@ -40,8 +49,35 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
         origin: { y: 0.6 },
       });
     } catch (err: any) {
-      console.error('Login error:', err);
-      setAuthError('Não foi possível conectar com o Google. Tente novamente.');
+      console.error('Login error details:', err);
+      const code = err?.code || '';
+      const rawMessage = err?.message || '';
+
+      let message = 'Não foi possível conectar com o Google no momento.';
+      let isPopupBlocked = false;
+      let isUnauthorizedDomain = false;
+
+      if (code === 'auth/popup-blocked') {
+        message = 'O navegador bloqueou a abertura da janela do Google. No preview embutido do AI Studio, abra o app em uma nova aba do navegador para permitir pop-ups.';
+        isPopupBlocked = true;
+      } else if (code === 'auth/popup-closed-by-user') {
+        message = 'A janela de autenticação do Google foi fechada antes de autorizar. Tente novamente.';
+      } else if (code === 'auth/cancelled-popup-request') {
+        message = 'Uma tentativa anterior de login já estava aberta. Tente novamente.';
+      } else if (code === 'auth/unauthorized-domain') {
+        message = `O endereço atual (${window.location.hostname}) precisa ser liberado na lista de Domínios Autorizados no Firebase. Abra o app diretamente pelo link oficial compartilhado.`;
+        isUnauthorizedDomain = true;
+      } else if (rawMessage) {
+        message = `Erro na autenticação (${code || 'OAuth'}): ${rawMessage}`;
+      }
+
+      setAuthError({
+        message,
+        code,
+        isPopupBlocked,
+        isInIframe,
+        isUnauthorizedDomain,
+      });
     } finally {
       setIsLoggingIn(false);
     }
@@ -200,13 +236,50 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
                   <LogIn className="w-4 h-4 text-slate-900" />
                   <span>{isLoggingIn ? 'Conectando...' : 'Entrar com Google e Sincronizar'}</span>
                 </button>
+
+                {isInIframe && !authError && (
+                  <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
+                    <span>💡 Visualizando no editor?</span>
+                    <a
+                      href={window.location.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:underline font-semibold inline-flex items-center gap-0.5"
+                    >
+                      Abrir em nova aba <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </p>
+                )}
               </div>
             )}
 
             {authError && (
-              <div className="p-2 rounded-lg bg-rose-950/80 border border-rose-500/30 text-rose-300 text-[11px] flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{authError}</span>
+              <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-200 text-xs space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                  <div className="flex-1 space-y-1">
+                    <p className="font-semibold text-rose-100 leading-snug">{authError.message}</p>
+                    {authError.code && (
+                      <p className="text-[10px] text-rose-300 font-mono">Código: {authError.code}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Direct Action: Open in top-level tab to bypass iframe pop-up blocks */}
+                <div className="pt-2 border-t border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-950 hover:bg-slate-200 shadow-sm transition-all cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-900" />
+                    <span>Abrir App em Nova Aba</span>
+                  </a>
+                  <span className="text-[10px] text-rose-300/90 leading-tight">
+                    Pop-ups e autenticação Google funcionam livremente fora do painel embutido.
+                  </span>
+                </div>
               </div>
             )}
           </div>
