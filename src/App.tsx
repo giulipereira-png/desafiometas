@@ -80,13 +80,19 @@ export default function App() {
 
     // Subscribe to cloud workouts
     const unsubWorkouts = subscribeToUserWorkouts(currentUser.uid, (cloudLogs) => {
-      if (Object.keys(cloudLogs).length > 0) {
-        setLogs((prev) => {
-          const merged = { ...prev, ...cloudLogs };
-          saveLogs(merged);
-          return merged;
-        });
-      }
+      setLogs((prev) => {
+        const merged = { ...prev, ...cloudLogs };
+        saveLogs(merged);
+
+        // If local had workouts not yet present in Firestore, push them up
+        const cloudKeys = new Set(Object.keys(cloudLogs));
+        for (const [date, item] of Object.entries(prev)) {
+          if (!cloudKeys.has(date)) {
+            syncWorkoutToCloud(currentUser.uid, item).catch(console.error);
+          }
+        }
+        return merged;
+      });
     });
 
     // Subscribe to cloud goal
@@ -97,6 +103,9 @@ export default function App() {
           saveGoal(merged);
           return merged;
         });
+      } else {
+        // Initial sync of current goal to cloud
+        syncGoalToCloud(currentUser.uid, goal).catch(console.error);
       }
     });
 

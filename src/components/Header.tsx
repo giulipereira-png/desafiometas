@@ -1,5 +1,5 @@
 import React from 'react';
-import { Instagram, FileText, Sparkles, Target, RotateCcw, HardDrive, Sliders, Share2 } from 'lucide-react';
+import { Instagram, FileText, Sparkles, Target, RotateCcw, Cloud, Sliders, Share2 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { CalculatedStats } from '../utils/statsCalculator';
 import { GoalConfig } from '../types/workout';
@@ -129,11 +129,24 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Backup & Sync */}
             <button
               onClick={onOpenSyncModal}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800 active:scale-95 transition-all cursor-pointer"
-              title="Sincronizar e fazer backup dos treinos na nuvem"
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer active:scale-95 ${
+                currentUser
+                  ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse sm:animate-none'
+              }`}
+              title={
+                currentUser
+                  ? `Sincronizado na nuvem (${currentUser.email || 'Conta conectada'}) - Acesse de qualquer navegador!`
+                  : 'Salvar na nuvem com Google para acessar de qualquer navegador ou celular'
+              }
             >
-              <HardDrive className="w-4 h-4 text-indigo-400" />
-              <span className="hidden md:inline">Nuvem</span>
+              <Cloud className={`w-4 h-4 ${currentUser ? 'text-emerald-400' : 'text-amber-400'}`} />
+              <span className="hidden sm:inline">
+                {currentUser ? 'Nuvem Conectada' : 'Salvar na Nuvem'}
+              </span>
+              <span className="sm:hidden">
+                {currentUser ? 'Nuvem' : 'Salvar'}
+              </span>
             </button>
 
             {/* Reset data helper */}
