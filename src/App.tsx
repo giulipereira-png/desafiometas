@@ -36,6 +36,7 @@ import {
   auth,
   testConnection,
   subscribeToUserWorkouts,
+  fetchUserWorkoutsFromCloud,
   subscribeToUserGoal,
   syncWorkoutToCloud,
   deleteWorkoutFromCloud,
@@ -51,6 +52,10 @@ export default function App() {
   // Firebase Auth & Cloud Sync State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'local'>('local');
+  const [cloudWorkoutsCount, setCloudWorkoutsCount] = useState<number>(0);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
   // Modals state
   const [isStoryModalOpen, setIsStoryModalOpen] = useState<boolean>(false);
@@ -70,6 +75,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      if (!user) {
+        setCloudSyncStatus('local');
+        setCloudWorkoutsCount(0);
+      }
     });
     return () => unsubscribeAuth();
   }, []);
@@ -78,22 +87,37 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Subscribe to cloud workouts
-    const unsubWorkouts = subscribeToUserWorkouts(currentUser.uid, (cloudLogs) => {
-      setLogs((prev) => {
-        const merged = { ...prev, ...cloudLogs };
-        saveLogs(merged);
+    setCloudSyncStatus('syncing');
 
-        // If local had workouts not yet present in Firestore, push them up
-        const cloudKeys = new Set(Object.keys(cloudLogs));
-        for (const [date, item] of Object.entries(prev)) {
-          if (!cloudKeys.has(date)) {
-            syncWorkoutToCloud(currentUser.uid, item).catch(console.error);
+    // Subscribe to cloud workouts
+    const unsubWorkouts = subscribeToUserWorkouts(
+      currentUser.uid,
+      (cloudLogs) => {
+        const count = Object.keys(cloudLogs).length;
+        setCloudWorkoutsCount(count);
+        setCloudSyncStatus('synced');
+        setCloudSyncError(null);
+
+        setLogs((prev) => {
+          const merged = { ...prev, ...cloudLogs };
+          saveLogs(merged);
+
+          // If local had workouts not yet present in Firestore, push them up
+          const cloudKeys = new Set(Object.keys(cloudLogs));
+          for (const [date, item] of Object.entries(prev)) {
+            if (!cloudKeys.has(date)) {
+              syncWorkoutToCloud(currentUser.uid, item).catch(console.error);
+            }
           }
-        }
-        return merged;
-      });
-    });
+          return merged;
+        });
+      },
+      (err: any) => {
+        console.error('Subscription error:', err);
+        setCloudSyncStatus('error');
+        setCloudSyncError(err?.message || 'Erro ao sincronizar com Firestore');
+      }
+    );
 
     // Subscribe to cloud goal
     const unsubGoal = subscribeToUserGoal(currentUser.uid, (cloudGoal) => {
@@ -115,18 +139,78 @@ export default function App() {
     };
   }, [currentUser]);
 
-  // Sync all local logs to cloud on initial login or demand
+  // Helper to reliably sync a single workout
+  const syncSingleWorkout = async (log: DayLog) => {
+    if (!currentUser) return;
+    try {
+      setCloudSyncStatus('syncing');
+      await syncWorkoutToCloud(currentUser.uid, log);
+      setCloudSyncStatus('synced');
+      setCloudSyncError(null);
+    } catch (err: any) {
+      console.error('Error syncing workout:', err);
+      setCloudSyncStatus('error');
+      setCloudSyncError('Falha ao salvar treino na nuvem: ' + (err?.message || ''));
+    }
+  };
+
+  const removeSingleWorkout = async (date: string) => {
+    if (!currentUser) return;
+    try {
+      setCloudSyncStatus('syncing');
+      await deleteWorkoutFromCloud(currentUser.uid, date);
+      setCloudSyncStatus('synced');
+      setCloudSyncError(null);
+    } catch (err: any) {
+      console.error('Error deleting workout from cloud:', err);
+      setCloudSyncStatus('error');
+      setCloudSyncError('Falha ao remover treino da nuvem: ' + (err?.message || ''));
+    }
+  };
+
+  // Sync all local logs to cloud on demand
   const handleSyncAllToCloud = async () => {
     if (!currentUser) return;
     try {
       setIsSyncingCloud(true);
+      setCloudSyncStatus('syncing');
+      setCloudSyncError(null);
       await syncGoalToCloud(currentUser.uid, goal);
       const entries = Object.values(logs);
       for (const entry of entries) {
         await syncWorkoutToCloud(currentUser.uid, entry);
       }
-    } catch (err) {
+      setCloudWorkoutsCount(entries.length);
+      setCloudSyncStatus('synced');
+      setSyncSuccessMessage(`${entries.length} treinos enviados para a nuvem com sucesso!`);
+      setTimeout(() => setSyncSuccessMessage(null), 4000);
+    } catch (err: any) {
       console.error('Error syncing all workouts to cloud:', err);
+      setCloudSyncStatus('error');
+      setCloudSyncError(err?.message || 'Erro ao enviar dados para a nuvem');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  // Pull all workouts from cloud on demand
+  const handlePullFromCloud = async () => {
+    if (!currentUser) return;
+    try {
+      setIsSyncingCloud(true);
+      setCloudSyncStatus('syncing');
+      setCloudSyncError(null);
+      const cloudData = await fetchUserWorkoutsFromCloud(currentUser.uid);
+      setLogs(cloudData);
+      saveLogs(cloudData);
+      setCloudWorkoutsCount(Object.keys(cloudData).length);
+      setCloudSyncStatus('synced');
+      setSyncSuccessMessage(`${Object.keys(cloudData).length} treinos carregados da nuvem!`);
+      setTimeout(() => setSyncSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error('Error pulling workouts from cloud:', err);
+      setCloudSyncStatus('error');
+      setCloudSyncError(err?.message || 'Erro ao baixar treinos da nuvem');
     } finally {
       setIsSyncingCloud(false);
     }
@@ -145,144 +229,133 @@ export default function App() {
 
   // Quick 1-tap toggle handlers (preserving all sports)
   const handleToggleSwim = (date: string, distanceMeters: number = 1500) => {
-    setLogs((prev) => {
-      const existing = prev[date];
-      const willComplete = !existing?.swimCompleted;
+    const existing = logs[date];
+    const willComplete = !existing?.swimCompleted;
 
-      const updated: DayLog = {
-        date,
-        swimCompleted: willComplete,
-        swim: willComplete
-          ? {
-              distanceMeters: existing?.swim?.distanceMeters || distanceMeters,
-              durationMinutes: existing?.swim?.durationMinutes || 45,
-              poolType: existing?.swim?.poolType || '25m',
-              style: existing?.swim?.style || 'Livre / Crawl',
-            }
-          : undefined,
-        gymCompleted: Boolean(existing?.gymCompleted),
-        gym: existing?.gym,
-        bikeCompleted: Boolean(existing?.bikeCompleted),
-        bike: existing?.bike,
-        runCompleted: Boolean(existing?.runCompleted),
-        run: existing?.run,
-        feeling: existing?.feeling || '🔥 Excelente',
-        updatedAt: new Date().toISOString(),
-      };
+    const updated: DayLog = {
+      date,
+      swimCompleted: willComplete,
+      swim: willComplete
+        ? {
+            distanceMeters: existing?.swim?.distanceMeters || distanceMeters,
+            durationMinutes: existing?.swim?.durationMinutes || 45,
+            poolType: existing?.swim?.poolType || '25m',
+            style: existing?.swim?.style || 'Livre / Crawl',
+          }
+        : undefined,
+      gymCompleted: Boolean(existing?.gymCompleted),
+      gym: existing?.gym,
+      bikeCompleted: Boolean(existing?.bikeCompleted),
+      bike: existing?.bike,
+      runCompleted: Boolean(existing?.runCompleted),
+      run: existing?.run,
+      feeling: existing?.feeling || '🔥 Excelente',
+      updatedAt: new Date().toISOString(),
+    };
 
-      if (currentUser) {
-        syncWorkoutToCloud(currentUser.uid, updated).catch(console.error);
-      }
-
-      return { ...prev, [date]: updated };
-    });
+    setLogs((prev) => ({ ...prev, [date]: updated }));
+    syncSingleWorkout(updated);
   };
 
   const handleToggleGym = (date: string, focus: string = 'Inferior / Pernas') => {
-    setLogs((prev) => {
-      const existing = prev[date];
-      const willComplete = !existing?.gymCompleted;
+    const existing = logs[date];
+    const willComplete = !existing?.gymCompleted;
 
-      const updated: DayLog = {
-        date,
-        swimCompleted: Boolean(existing?.swimCompleted),
-        swim: existing?.swim,
-        gymCompleted: willComplete,
-        gym: willComplete
-          ? {
-              focus: (existing?.gym?.focus || focus) as any,
-              durationMinutes: existing?.gym?.durationMinutes || 55,
-              intensity: existing?.gym?.intensity || 'Intenso',
-            }
-          : undefined,
-        bikeCompleted: Boolean(existing?.bikeCompleted),
-        bike: existing?.bike,
-        runCompleted: Boolean(existing?.runCompleted),
-        run: existing?.run,
-        feeling: existing?.feeling || '💪 Firme',
-        updatedAt: new Date().toISOString(),
-      };
+    const updated: DayLog = {
+      date,
+      swimCompleted: Boolean(existing?.swimCompleted),
+      swim: existing?.swim,
+      gymCompleted: willComplete,
+      gym: willComplete
+        ? {
+            focus: (existing?.gym?.focus || focus) as any,
+            durationMinutes: existing?.gym?.durationMinutes || 55,
+            intensity: existing?.gym?.intensity || 'Intenso',
+          }
+        : undefined,
+      bikeCompleted: Boolean(existing?.bikeCompleted),
+      bike: existing?.bike,
+      runCompleted: Boolean(existing?.runCompleted),
+      run: existing?.run,
+      feeling: existing?.feeling || '💪 Firme',
+      updatedAt: new Date().toISOString(),
+    };
 
-      if (currentUser) {
-        syncWorkoutToCloud(currentUser.uid, updated).catch(console.error);
-      }
-
-      return { ...prev, [date]: updated };
-    });
+    setLogs((prev) => ({ ...prev, [date]: updated }));
+    syncSingleWorkout(updated);
   };
 
   const handleToggleBike = (date: string, distanceKm: number = 20) => {
-    setLogs((prev) => {
-      const existing = prev[date];
-      const willComplete = !existing?.bikeCompleted;
+    const existing = logs[date];
+    const willComplete = !existing?.bikeCompleted;
 
-      const updated: DayLog = {
-        date,
-        swimCompleted: Boolean(existing?.swimCompleted),
-        swim: existing?.swim,
-        gymCompleted: Boolean(existing?.gymCompleted),
-        gym: existing?.gym,
-        bikeCompleted: willComplete,
-        bike: willComplete
-          ? {
-              distanceKm: existing?.bike?.distanceKm || distanceKm,
-              durationMinutes: existing?.bike?.durationMinutes || 50,
-              bikeType: existing?.bike?.bikeType || 'Estrada / Speed',
-            }
-          : undefined,
-        runCompleted: Boolean(existing?.runCompleted),
-        run: existing?.run,
-        feeling: existing?.feeling || '🔥 Excelente',
-        updatedAt: new Date().toISOString(),
-      };
+    const updated: DayLog = {
+      date,
+      swimCompleted: Boolean(existing?.swimCompleted),
+      swim: existing?.swim,
+      gymCompleted: Boolean(existing?.gymCompleted),
+      gym: existing?.gym,
+      bikeCompleted: willComplete,
+      bike: willComplete
+        ? {
+            distanceKm: existing?.bike?.distanceKm || distanceKm,
+            durationMinutes: existing?.bike?.durationMinutes || 50,
+            bikeType: existing?.bike?.bikeType || 'Estrada / Speed',
+          }
+        : undefined,
+      runCompleted: Boolean(existing?.runCompleted),
+      run: existing?.run,
+      feeling: existing?.feeling || '🔥 Excelente',
+      updatedAt: new Date().toISOString(),
+    };
 
-      if (currentUser) {
-        syncWorkoutToCloud(currentUser.uid, updated).catch(console.error);
-      }
-
-      return { ...prev, [date]: updated };
-    });
+    setLogs((prev) => ({ ...prev, [date]: updated }));
+    syncSingleWorkout(updated);
   };
 
   const handleToggleRun = (date: string, distanceKm: number = 5) => {
-    setLogs((prev) => {
-      const existing = prev[date];
-      const willComplete = !existing?.runCompleted;
+    const existing = logs[date];
+    const willComplete = !existing?.runCompleted;
 
-      const updated: DayLog = {
-        date,
-        swimCompleted: Boolean(existing?.swimCompleted),
-        swim: existing?.swim,
-        gymCompleted: Boolean(existing?.gymCompleted),
-        gym: existing?.gym,
-        bikeCompleted: Boolean(existing?.bikeCompleted),
-        bike: existing?.bike,
-        runCompleted: willComplete,
-        run: willComplete
-          ? {
-              distanceKm: existing?.run?.distanceKm || distanceKm,
-              durationMinutes: existing?.run?.durationMinutes || 30,
-              terrain: existing?.run?.terrain || 'Rua / Asfalto',
-              paceAvg: existing?.run?.paceAvg || '5:30/km',
-            }
-          : undefined,
-        feeling: existing?.feeling || '💪 Firme',
-        updatedAt: new Date().toISOString(),
-      };
+    const updated: DayLog = {
+      date,
+      swimCompleted: Boolean(existing?.swimCompleted),
+      swim: existing?.swim,
+      gymCompleted: Boolean(existing?.gymCompleted),
+      gym: existing?.gym,
+      bikeCompleted: Boolean(existing?.bikeCompleted),
+      bike: existing?.bike,
+      runCompleted: willComplete,
+      run: willComplete
+        ? {
+            distanceKm: existing?.run?.distanceKm || distanceKm,
+            durationMinutes: existing?.run?.durationMinutes || 30,
+            terrain: existing?.run?.terrain || 'Rua / Asfalto',
+            paceAvg: existing?.run?.paceAvg || '5:30/km',
+          }
+        : undefined,
+      feeling: existing?.feeling || '💪 Firme',
+      updatedAt: new Date().toISOString(),
+    };
 
-      if (currentUser) {
-        syncWorkoutToCloud(currentUser.uid, updated).catch(console.error);
-      }
-
-      return { ...prev, [date]: updated };
-    });
+    setLogs((prev) => ({ ...prev, [date]: updated }));
+    syncSingleWorkout(updated);
   };
 
-  const handleSaveGoal = (newGoal: GoalConfig) => {
+  const handleSaveGoal = async (newGoal: GoalConfig) => {
     setGoal(newGoal);
     saveGoal(newGoal);
     if (currentUser) {
-      syncGoalToCloud(currentUser.uid, newGoal).catch(console.error);
+      try {
+        setCloudSyncStatus('syncing');
+        await syncGoalToCloud(currentUser.uid, newGoal);
+        setCloudSyncStatus('synced');
+        setCloudSyncError(null);
+      } catch (err: any) {
+        console.error('Error syncing goal:', err);
+        setCloudSyncStatus('error');
+        setCloudSyncError('Falha ao sincronizar metas');
+      }
     }
   };
 
@@ -291,9 +364,7 @@ export default function App() {
       ...prev,
       [newLog.date]: newLog,
     }));
-    if (currentUser) {
-      syncWorkoutToCloud(currentUser.uid, newLog).catch(console.error);
-    }
+    syncSingleWorkout(newLog);
   };
 
   const handleDeleteDayLog = (date: string) => {
@@ -302,9 +373,7 @@ export default function App() {
       delete copy[date];
       return copy;
     });
-    if (currentUser) {
-      deleteWorkoutFromCloud(currentUser.uid, date).catch(console.error);
-    }
+    removeSingleWorkout(date);
   };
 
   const handleOpenDayDetails = (date: string) => {
@@ -335,6 +404,7 @@ export default function App() {
         stats={stats}
         goal={goal}
         currentUser={currentUser}
+        cloudSyncStatus={cloudSyncStatus}
         onOpenStoryModal={() => {
           setModalDateStr(selectedDateStr);
           setIsStoryModalOpen(true);
@@ -349,6 +419,29 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 sm:space-y-8">
         
+        {/* Cloud Sync Notifications */}
+        {cloudSyncError && (
+          <div className="bg-rose-950/70 border border-rose-500/40 text-rose-200 px-4 py-2.5 rounded-xl text-xs flex items-center justify-between shadow-md">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+              <span>{cloudSyncError}</span>
+            </span>
+            <button
+              onClick={() => setIsSyncModalOpen(true)}
+              className="text-cyan-400 hover:underline font-semibold cursor-pointer ml-3 shrink-0"
+            >
+              Abrir detalhes
+            </button>
+          </div>
+        )}
+
+        {syncSuccessMessage && (
+          <div className="bg-emerald-950/70 border border-emerald-500/40 text-emerald-200 px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-md">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{syncSuccessMessage}</span>
+          </div>
+        )}
+
         {/* Banner: Countdown & Streak Motivation */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/60 border border-slate-800 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -565,7 +658,13 @@ export default function App() {
         onClose={() => setIsSyncModalOpen(false)}
         currentUser={currentUser}
         onSyncAllToCloud={handleSyncAllToCloud}
+        onPullFromCloud={handlePullFromCloud}
         isSyncingCloud={isSyncingCloud}
+        cloudWorkoutsCount={cloudWorkoutsCount}
+        localWorkoutsCount={Object.keys(logs).length}
+        cloudSyncStatus={cloudSyncStatus}
+        cloudSyncError={cloudSyncError}
+        syncSuccessMessage={syncSuccessMessage}
         onDataImported={() => {
           setLogs(loadLogs());
           setGoal(loadGoal());

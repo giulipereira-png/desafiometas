@@ -8,6 +8,7 @@ import {
   collection,
   onSnapshot,
   getDocFromServer,
+  getDocs,
   Unsubscribe
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -148,7 +149,8 @@ export async function syncGoalToCloud(userId: string, goal: GoalConfig): Promise
 
 export function subscribeToUserWorkouts(
   userId: string,
-  onWorkouts: (logs: Record<string, DayLog>) => void
+  onWorkouts: (logs: Record<string, DayLog>) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = `users/${userId}/workouts`;
   const workoutsRef = collection(db, 'users', userId, 'workouts');
@@ -166,9 +168,29 @@ export function subscribeToUserWorkouts(
       onWorkouts(logs);
     },
     (error) => {
+      console.error('Error in onSnapshot workouts:', error);
+      if (onError) onError(error);
       handleFirestoreError(error, OperationType.LIST, path);
     }
   );
+}
+
+export async function fetchUserWorkoutsFromCloud(userId: string): Promise<Record<string, DayLog>> {
+  const path = `users/${userId}/workouts`;
+  try {
+    const workoutsRef = collection(db, 'users', userId, 'workouts');
+    const snapshot = await getDocs(workoutsRef);
+    const logs: Record<string, DayLog> = {};
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as DayLog;
+      if (data.date) {
+        logs[data.date] = data;
+      }
+    });
+    return logs;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
 }
 
 export function subscribeToUserGoal(

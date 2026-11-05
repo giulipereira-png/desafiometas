@@ -7,7 +7,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
@@ -16,21 +15,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // User profile and goals
+    // User profile and goal settings
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow read, write: if isOwner(userId);
 
-      // Subcollection for user's workout logs
+      // Subcollection for user's daily workout logs
       match /workouts/{dateId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(dateId);
-        allow delete: if isOwner(userId) && isValidId(dateId);
+        allow read, write: if isOwner(userId);
       }
     }
   }

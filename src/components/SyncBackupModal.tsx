@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { X, Download, Upload, Cloud, HardDrive, Check, AlertCircle, LogIn, LogOut, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
+import { X, Download, Upload, Cloud, HardDrive, Check, AlertCircle, LogIn, LogOut, ShieldCheck, Sparkles, ExternalLink, Copy } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { User } from 'firebase/auth';
 import { loginWithGoogle, logoutUser } from '../firebase';
@@ -19,7 +19,13 @@ interface SyncBackupModalProps {
   currentUser: User | null;
   onDataImported: () => void;
   onSyncAllToCloud: () => Promise<void>;
+  onPullFromCloud?: () => Promise<void>;
   isSyncingCloud: boolean;
+  cloudWorkoutsCount?: number;
+  localWorkoutsCount?: number;
+  cloudSyncStatus?: 'synced' | 'syncing' | 'error' | 'local';
+  cloudSyncError?: string | null;
+  syncSuccessMessage?: string | null;
 }
 
 export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
@@ -28,12 +34,19 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
   currentUser,
   onDataImported,
   onSyncAllToCloud,
+  onPullFromCloud,
   isSyncingCloud,
+  cloudWorkoutsCount = 0,
+  localWorkoutsCount = 0,
+  cloudSyncStatus = 'local',
+  cloudSyncError = null,
+  syncSuccessMessage = null,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [authError, setAuthError] = useState<AuthErrorState | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [copiedDomain, setCopiedDomain] = useState<boolean>(false);
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   if (!isOpen) return null;
@@ -208,18 +221,64 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    Todos os seus treinos e metas são salvos na nuvem automaticamente.
-                  </span>
+                {/* Sync Counters */}
+                <div className="grid grid-cols-2 gap-2 pt-1 text-center">
+                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">Neste Aparelho</span>
+                    <span className="text-base font-extrabold text-cyan-400 font-display block">
+                      {localWorkoutsCount}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">dias com treino</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">Salvos na Nuvem</span>
+                    <span className="text-base font-extrabold text-emerald-400 font-display block">
+                      {cloudWorkoutsCount}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">sincronizados</span>
+                  </div>
+                </div>
+
+                {/* Cloud Action Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={onSyncAllToCloud}
                     disabled={isSyncingCloud}
-                    className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 transition-colors cursor-pointer disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    {isSyncingCloud ? 'Sincronizando...' : 'Forçar Envio'}
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isSyncingCloud ? 'Enviando...' : 'Enviar para Nuvem'}</span>
                   </button>
+
+                  {onPullFromCloud && (
+                    <button
+                      onClick={onPullFromCloud}
+                      disabled={isSyncingCloud}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Baixar da Nuvem</span>
+                    </button>
+                  )}
+                </div>
+
+                {syncSuccessMessage && (
+                  <div className="p-2 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <span>{syncSuccessMessage}</span>
+                  </div>
+                )}
+
+                {cloudSyncError && (
+                  <div className="p-2 rounded-lg bg-rose-950/80 border border-rose-500/30 text-rose-300 text-[11px] flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                    <span>{cloudSyncError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5 pt-1 text-slate-400 text-[11px]">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Sincronização contínua ativada: qualquer treino marcado aqui é enviado automaticamente.</span>
                 </div>
               </div>
             ) : (
@@ -254,7 +313,7 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
             )}
 
             {authError && (
-              <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-200 text-xs space-y-2.5">
+              <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-200 text-xs space-y-3">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
                   <div className="flex-1 space-y-1">
@@ -265,21 +324,78 @@ export const SyncBackupModal: React.FC<SyncBackupModalProps> = ({
                   </div>
                 </div>
 
-                {/* Direct Action: Open in top-level tab to bypass iframe pop-up blocks */}
-                <div className="pt-2 border-t border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <a
-                    href={window.location.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-950 hover:bg-slate-200 shadow-sm transition-all cursor-pointer"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-900" />
-                    <span>Abrir App em Nova Aba</span>
-                  </a>
-                  <span className="text-[10px] text-rose-300/90 leading-tight">
-                    Pop-ups e autenticação Google funcionam livremente fora do painel embutido.
-                  </span>
-                </div>
+                {authError.isUnauthorizedDomain ? (
+                  <div className="pt-2 border-t border-rose-500/30 space-y-2.5">
+                    <p className="text-[11px] text-rose-200 leading-relaxed">
+                      Como o app está na Vercel (<strong>{typeof window !== 'undefined' ? window.location.hostname : 'desafiometas.vercel.app'}</strong>), o Firebase precisa autorizar esse domínio para permitir o login com Google:
+                    </p>
+
+                    <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2 text-[11px] text-slate-300">
+                      <p className="font-bold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        Passo a passo rápido (30 segundos):
+                      </p>
+                      <ol className="list-decimal list-inside space-y-1.5 text-slate-300 pl-0.5">
+                        <li>Clique no botão amarelo abaixo para abrir as configurações do Firebase.</li>
+                        <li>Role a página até a tabela <strong>&quot;Domínios autorizados&quot;</strong>.</li>
+                        <li>
+                          Clique em <strong>&quot;Adicionar domínio&quot;</strong> e cole:{' '}
+                          <code className="bg-slate-800 px-1.5 py-0.5 rounded text-cyan-300 font-mono text-[10px]">
+                            {typeof window !== 'undefined' ? window.location.hostname : 'desafiometas.vercel.app'}
+                          </code>
+                        </li>
+                        <li>Clique em <strong>Salvar</strong> e volte aqui para clicar em Entrar com Google!</li>
+                      </ol>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <a
+                        href="https://console.firebase.google.com/project/gen-lang-client-0490377599/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-sm transition-all cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-950" />
+                        <span>Abrir Configurações do Firebase</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            navigator.clipboard.writeText(window.location.hostname);
+                            setCopiedDomain(true);
+                            setTimeout(() => setCopiedDomain(false), 2000);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                      >
+                        {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>{copiedDomain ? 'Copiado!' : 'Copiar Domínio'}</span>
+                      </button>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-cyan-200 text-[11px] leading-relaxed">
+                      💡 <strong>Quer transferir seus dados agora mesmo sem configurar?</strong> Role um pouquinho para baixo e use a seção <strong>&quot;Backup Manual (Arquivo JSON)&quot;</strong> — basta clicar em <em>Baixar Backup</em> e depois <em>Importar Arquivo</em> no outro aparelho. Funciona 100% offline!
+                    </div>
+                  </div>
+                ) : (
+                  /* Action for popups */
+                  <div className="pt-2 border-t border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <a
+                      href={typeof window !== 'undefined' ? window.location.href : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-950 hover:bg-slate-200 shadow-sm transition-all cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-900" />
+                      <span>Abrir App em Nova Aba</span>
+                    </a>
+                    <span className="text-[10px] text-rose-300/90 leading-tight">
+                      Pop-ups e autenticação Google funcionam livremente fora do painel embutido.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
