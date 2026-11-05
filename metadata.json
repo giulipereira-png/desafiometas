@@ -1,0 +1,8 @@
+{
+  "name": "Remix Prof Giu Tracker - Meta Fim de Ano 2026",
+  "description": "Acompanhamento intuitivo de treinos de natação e musculação com metas para 2026, estatísticas semanais, exportação PDF e gerador de Stories para o Instagram da @prof_giu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

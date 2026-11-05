@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and customizable athletic goals",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The unique Firebase Auth user ID"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Display name of the user"
+        },
+        "userHandle": {
+          "type": "string",
+          "description": "Instagram or social handle"
+        },
+        "targetEndDate": {
+          "type": "string",
+          "description": "Target end date ISO format YYYY-MM-DD"
+        },
+        "swimEnabled": {
+          "type": "boolean",
+          "description": "Whether swim tracking is enabled"
+        },
+        "swimTargetKm": {
+          "type": "number",
+          "description": "Target swimming kilometers"
+        },
+        "gymEnabled": {
+          "type": "boolean",
+          "description": "Whether gym tracking is enabled"
+        },
+        "gymWeeklyTargetDays": {
+          "type": "number",
+          "description": "Target weekly gym workouts"
+        },
+        "bikeEnabled": {
+          "type": "boolean",
+          "description": "Whether bike tracking is enabled"
+        },
+        "bikeTargetKm": {
+          "type": "number",
+          "description": "Target cycling kilometers"
+        },
+        "runEnabled": {
+          "type": "boolean",
+          "description": "Whether run tracking is enabled"
+        },
+        "runTargetKm": {
+          "type": "number",
+          "description": "Target running kilometers"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["userId", "userName", "userHandle", "targetEndDate"]
+    },
+    "WorkoutLog": {
+      "title": "WorkoutLog",
+      "description": "Daily workout log entry supporting swimming, gym, cycling, and running",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "Date in YYYY-MM-DD format"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "swimCompleted": {
+          "type": "boolean",
+          "description": "Whether swim was completed"
+        },
+        "swim": {
+          "type": "object",
+          "description": "Swim workout details"
+        },
+        "gymCompleted": {
+          "type": "boolean",
+          "description": "Whether gym was completed"
+        },
+        "gym": {
+          "type": "object",
+          "description": "Gym workout details"
+        },
+        "bikeCompleted": {
+          "type": "boolean",
+          "description": "Whether bike was completed"
+        },
+        "bike": {
+          "type": "object",
+          "description": "Cycling workout details"
+        },
+        "runCompleted": {
+          "type": "boolean",
+          "description": "Whether running was completed"
+        },
+        "run": {
+          "type": "object",
+          "description": "Running workout details"
+        },
+        "feeling": {
+          "type": "string",
+          "description": "Perceived feeling"
+        },
+        "notes": {
+          "type": "string",
+          "description": "General daily notes"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of update"
+        }
+      },
+      "required": ["date", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile and customizable multi-sport goals"
+    },
+    "/users/{userId}/workouts/{dateId}": {
+      "schema": "WorkoutLog",
+      "description": "Daily multi-sport workout logs for user"
+    }
+  }
+}
