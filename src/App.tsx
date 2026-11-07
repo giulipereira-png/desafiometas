@@ -29,7 +29,7 @@ import { ShareAppModal } from './components/ShareAppModal';
 
 import { DayLog, GoalConfig } from './types/workout';
 import { loadLogs, saveLogs, loadGoal, saveGoal, resetToDefaults } from './utils/storage';
-import { calculateStats, TODAY_STR, formatReadableDateBR } from './utils/statsCalculator';
+import { calculateStats, getTodayStr, TODAY_STR, formatReadableDateBR } from './utils/statsCalculator';
 
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -46,7 +46,8 @@ import {
 export default function App() {
   const [logs, setLogs] = useState<Record<string, DayLog>>(() => loadLogs());
   const [goal, setGoal] = useState<GoalConfig>(() => loadGoal());
-  const [selectedDateStr, setSelectedDateStr] = useState<string>(TODAY_STR);
+  const [todayStr, setTodayStr] = useState<string>(() => getTodayStr());
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(() => getTodayStr());
   const [activeTab, setActiveTab] = useState<'calendar' | 'stats'>('calendar');
 
   // Firebase Auth & Cloud Sync State
@@ -64,7 +65,31 @@ export default function App() {
   const [isDayEditModalOpen, setIsDayEditModalOpen] = useState<boolean>(false);
   const [isGoalSettingsModalOpen, setIsGoalSettingsModalOpen] = useState<boolean>(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
-  const [modalDateStr, setModalDateStr] = useState<string>(TODAY_STR);
+  const [modalDateStr, setModalDateStr] = useState<string>(() => getTodayStr());
+
+  // Keep today's date fresh automatically across midnight and window focus
+  useEffect(() => {
+    const updateToday = () => {
+      const realToday = getTodayStr();
+      setTodayStr((prev) => {
+        if (prev !== realToday) {
+          setSelectedDateStr((sel) => (sel === prev ? realToday : sel));
+          return realToday;
+        }
+        return prev;
+      });
+    };
+
+    const interval = setInterval(updateToday, 60000); // Check every minute
+    window.addEventListener('focus', updateToday);
+    document.addEventListener('visibilitychange', updateToday);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', updateToday);
+      document.removeEventListener('visibilitychange', updateToday);
+    };
+  }, []);
 
   // Test Firebase connection on mount
   useEffect(() => {
@@ -225,7 +250,7 @@ export default function App() {
     saveGoal(goal);
   }, [goal]);
 
-  const stats = calculateStats(logs, goal, TODAY_STR);
+  const stats = calculateStats(logs, goal, todayStr);
 
   // Quick 1-tap toggle handlers (preserving all sports)
   const handleToggleSwim = (date: string, distanceMeters: number = 1500) => {
@@ -509,6 +534,7 @@ export default function App() {
         {/* Quick Check-in Bar for Today / Selected Date */}
         <QuickCheckinBar
           currentDateStr={selectedDateStr}
+          todayStr={todayStr}
           dayLog={logs[selectedDateStr]}
           goal={goal}
           onToggleSwim={handleToggleSwim}
@@ -562,6 +588,7 @@ export default function App() {
           <CalendarView
             logs={logs}
             selectedDateStr={selectedDateStr}
+            todayStr={todayStr}
             onSelectDay={(dateStr) => {
               setSelectedDateStr(dateStr);
               handleOpenDayDetails(dateStr);
@@ -574,7 +601,7 @@ export default function App() {
 
         {/* Tab Content 2: Weekly Performance Statistics View */}
         {activeTab === 'stats' && (
-          <WeeklyStatsView logs={logs} />
+          <WeeklyStatsView logs={logs} todayStr={todayStr} />
         )}
 
         {/* Engagement & Story Highlight Banner at Bottom */}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, Waves, Dumbbell, Bike, Footprints, Calendar, Clock, Trash2, Instagram, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DayLog } from '../types/workout';
-import { formatReadableDateBR, TODAY_STR } from '../utils/statsCalculator';
+import { formatReadableDateBR, getTodayStr, TODAY_STR } from '../utils/statsCalculator';
 
 interface DayEditModalProps {
   isOpen: boolean;
@@ -244,7 +244,7 @@ export const DayEditModal: React.FC<DayEditModalProps> = ({
     onClose();
   };
 
-  const isToday = dateStr === TODAY_STR;
+  const isToday = dateStr === getTodayStr();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">

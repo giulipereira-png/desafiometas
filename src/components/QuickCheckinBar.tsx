@@ -2,7 +2,7 @@ import React from 'react';
 import { Waves, Dumbbell, Bike, Footprints, Check, Calendar, Flame, Instagram } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DayLog, GoalConfig } from '../types/workout';
-import { formatReadableDateBR, TODAY_STR } from '../utils/statsCalculator';
+import { formatReadableDateBR, getTodayStr, TODAY_STR } from '../utils/statsCalculator';
 
 interface QuickCheckinBarProps {
   currentDateStr: string;
@@ -15,6 +15,7 @@ interface QuickCheckinBarProps {
   onOpenDayDetails: (date: string) => void;
   onOpenStoryModal: () => void;
   streakCount: number;
+  todayStr?: string;
 }
 
 export const QuickCheckinBar: React.FC<QuickCheckinBarProps> = ({
@@ -28,13 +29,15 @@ export const QuickCheckinBar: React.FC<QuickCheckinBarProps> = ({
   onOpenDayDetails,
   onOpenStoryModal,
   streakCount,
+  todayStr,
 }) => {
+  const actualTodayStr = todayStr || getTodayStr();
   const isSwimDone = Boolean(dayLog?.swimCompleted);
   const isGymDone = Boolean(dayLog?.gymCompleted);
   const isBikeDone = Boolean(dayLog?.bikeCompleted);
   const isRunDone = Boolean(dayLog?.runCompleted);
 
-  const isToday = currentDateStr === TODAY_STR;
+  const isToday = currentDateStr === actualTodayStr;
 
   const triggerCelebration = () => {
     confetti({

@@ -1,19 +1,23 @@
 import { DayLog, GoalConfig, WeekSummary } from '../types/workout';
 
-// Reference date for current time in late 2026
-export const TODAY_STR = '2026-11-05';
-
-export function parseISODate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0); // safe noon time to avoid timezone drift
-}
-
 export function formatISODate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
+export function parseISODate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0); // safe noon time to avoid timezone drift
+}
+
+export function getTodayStr(): string {
+  return formatISODate(new Date());
+}
+
+// Dynamically computed today's date in 'YYYY-MM-DD' format based on user device local time
+export const TODAY_STR = formatISODate(new Date());
 
 export function formatReadableDateBR(dateStr: string, includeDayOfWeek: boolean = true): string {
   const date = parseISODate(dateStr);
@@ -111,8 +115,9 @@ export interface CalculatedStats {
 export function calculateStats(
   logs: Record<string, DayLog>,
   goal: GoalConfig,
-  currentDateStr: string = TODAY_STR
+  currentDateStr?: string
 ): CalculatedStats {
+  const activeTodayStr = currentDateStr || getTodayStr();
   const logEntries = Object.values(logs).sort((a, b) => a.date.localeCompare(b.date));
 
   let totalSwimMeters = 0;
@@ -150,7 +155,7 @@ export function calculateStats(
   });
 
   // Countdown calculations
-  const today = parseISODate(currentDateStr);
+  const today = parseISODate(activeTodayStr);
   const targetDate = parseISODate(goal.targetEndDate || '2026-12-31');
   const diffTime = targetDate.getTime() - today.getTime();
   const daysRemainingToGoal = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
@@ -194,7 +199,7 @@ export function calculateStats(
   let longestGymWeekStreak = 0;
   let tempStreak = 0;
 
-  const currentMonday = getMondayOfWeek(currentDateStr);
+  const currentMonday = getMondayOfWeek(activeTodayStr);
   const currentWeekLog = weeklyMap[currentMonday];
   const currentWeekGymCount = currentWeekLog ? currentWeekLog.gymSessions : 0;
   const gymTarget = goal.gymWeeklyTargetDays || 4;
@@ -217,14 +222,14 @@ export function calculateStats(
 
   // Day streaks across any completed activity
   const isDayActive = (l?: DayLog) => Boolean(l && (l.swimCompleted || l.gymCompleted || l.bikeCompleted || l.runCompleted));
-  const todayEntry = logs[currentDateStr];
+  const todayEntry = logs[activeTodayStr];
   let currentActiveDayStreak = 0;
 
   if (isDayActive(todayEntry)) {
     currentActiveDayStreak += 1;
   }
 
-  const tempDate = parseISODate(currentDateStr);
+  const tempDate = parseISODate(activeTodayStr);
   tempDate.setDate(tempDate.getDate() - 1);
 
   for (let i = 0; i < 90; i++) {

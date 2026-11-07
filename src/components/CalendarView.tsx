@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Waves, Dumbbell, Bike, Footprints, Check, Calendar as CalendarIcon, Flag, Instagram } from 'lucide-react';
 import { DayLog } from '../types/workout';
-import { formatISODate, parseISODate, TODAY_STR } from '../utils/statsCalculator';
+import { formatISODate, parseISODate, getTodayStr, TODAY_STR } from '../utils/statsCalculator';
 
 interface CalendarViewProps {
   logs: Record<string, DayLog>;
@@ -10,6 +10,7 @@ interface CalendarViewProps {
   onQuickToggleGym: (dateStr: string) => void;
   onOpenStoryForDate?: (dateStr: string) => void;
   selectedDateStr: string;
+  todayStr?: string;
 }
 
 const MONTH_NAMES = [
@@ -26,10 +27,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onQuickToggleGym,
   onOpenStoryForDate,
   selectedDateStr,
+  todayStr,
 }) => {
-  // Start on November 2026 strictly
-  const [currentYear, setCurrentYear] = useState<number>(2026);
-  const [currentMonth, setCurrentMonth] = useState<number>(10); // 10 = November
+  const actualTodayStr = todayStr || getTodayStr();
+  const todayDate = parseISODate(actualTodayStr);
+
+  const [currentYear, setCurrentYear] = useState<number>(() => todayDate.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => todayDate.getMonth());
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
@@ -165,7 +169,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
-              onClick={() => jumpToMonth(10, 2026)}
+              onClick={() => {
+                jumpToMonth(todayDate.getMonth(), todayDate.getFullYear());
+                onSelectDay(actualTodayStr);
+              }}
               className="px-2 py-1 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
             >
               Hoje
@@ -265,7 +272,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               return (
                 <div key={wIdx} className="grid grid-cols-8 gap-2">
                   {week.map((slot) => {
-                    const isToday = slot.dateStr === TODAY_STR;
+                    const isToday = slot.dateStr === actualTodayStr;
                     const isSelected = slot.dateStr === selectedDateStr;
                     const isTargetDeadline = slot.dateStr === '2026-12-31';
                     const isBeforeNov = slot.dateStr < '2026-11-01';

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { BarChart3, TrendingUp, Waves, Dumbbell, Award, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { DayLog } from '../types/workout';
-import { groupLogsByWeek, formatReadableDateBR, TODAY_STR, getMondayOfWeek } from '../utils/statsCalculator';
+import { groupLogsByWeek, formatReadableDateBR, getTodayStr, TODAY_STR, getMondayOfWeek } from '../utils/statsCalculator';
 
 interface WeeklyStatsViewProps {
   logs: Record<string, DayLog>;
+  todayStr?: string;
 }
 
-export const WeeklyStatsView: React.FC<WeeklyStatsViewProps> = ({ logs }) => {
+export const WeeklyStatsView: React.FC<WeeklyStatsViewProps> = ({ logs, todayStr }) => {
   const [selectedMetric, setSelectedMetric] = useState<'both' | 'swim' | 'gym'>('both');
 
   const weeklyData = groupLogsByWeek(logs);
@@ -29,7 +30,8 @@ export const WeeklyStatsView: React.FC<WeeklyStatsViewProps> = ({ logs }) => {
 
   const bestSwimWeek = [...weeksList].sort((a, b) => b.swimKm - a.swimKm)[0];
 
-  const currentMonday = getMondayOfWeek(TODAY_STR);
+  const actualTodayStr = todayStr || getTodayStr();
+  const currentMonday = getMondayOfWeek(actualTodayStr);
 
   return (
     <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-6 shadow-xl backdrop-blur-md space-y-6">
